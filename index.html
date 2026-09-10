@@ -225,7 +225,12 @@
     border:1px solid transparent;background:rgba(0,0,0,.25);color:#DCE3EE;font-size:12.5px;
   }
   .results button:hover{border-color:var(--gold);background:rgba(227,167,44,.14)}
-  .results .rn{font-family:var(--mono);color:var(--gold);margin-right:6px}
+  .results .rn{font-family:var(--mono);font-weight:500;margin-right:6px}
+  .results .rn.got{color:#3FCB84}
+  .results .rn.miss{color:#FF5F4D}
+  .results .tick{color:#3FCB84;margin-left:5px;font-size:11px}
+  .results button.got{border-left:3px solid #3FCB84}
+  .results button.miss{border-left:3px solid #FF5F4D}
   .results .rs{display:block;font-size:10.5px;color:#8A93A6;letter-spacing:.04em}
 
   @media (max-width:900px){
@@ -711,6 +716,7 @@ $("binder").addEventListener("click", e => {
   owned.has(slot.id) ? owned.delete(slot.id) : owned.add(slot.id);
   if (S.need) cache = null;
   persist(); render(); showCard(slot);
+  if ($("q").value.trim().length > 1) $("q").dispatchEvent(new Event("input"));
 });
 $("binder").addEventListener("mouseover", e => {
   const p = e.target.closest(".pocket");
@@ -772,9 +778,12 @@ $("q").addEventListener("input", e => {
       label(s).toLowerCase().includes(q) || teamOf(s).toLowerCase().includes(q))
     .slice(0, 25);
   box.innerHTML = hits.length
-    ? hits.map(({ s, i }) =>
-        `<button data-i="${i}"><span class="rn">${esc(s.num)}</span>${esc(label(s))}
-         <span class="rs">${esc(s.sub)}</span></button>`).join("")
+    ? hits.map(({ s, i }) => {
+        const k = owned.has(s.id) ? "got" : "miss";
+        return `<button class="${k}" data-i="${i}"><span class="rn ${k}">${esc(s.num)}</span>${
+          esc(label(s))}${k === "got" ? '<span class="tick">&check;</span>' : ""}
+         <span class="rs">${esc(s.sub)}</span></button>`;
+      }).join("")
     : `<p class="fine">No card by that name or number in this binder.</p>`;
 });
 $("results").onclick = e => {
