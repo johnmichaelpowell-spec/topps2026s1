@@ -308,6 +308,35 @@
     .p-foot{margin-top:5mm;border-top:.5pt solid #999;padding-top:2mm;
       font-family:var(--body);font-size:7pt;color:#666}
   }
+/* >>> binderz-sync css >>> */
+  /* ---------- cross-device sync ---------- */
+  .syncbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    margin:8px 0 0;font-size:12px;color:var(--muted)}
+  .syncdot{width:8px;height:8px;border-radius:50%;background:#8a8078;flex:none}
+  .syncdot.ok{background:var(--owned)}
+  .syncdot.work{background:var(--gold);animation:syncpulse 1.1s ease-in-out infinite}
+  .syncdot.warn{background:var(--gold)}
+  .syncdot.err{background:#C0392B}
+  @keyframes syncpulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .syncbtn{font-family:inherit;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    padding:4px 9px;border-radius:3px;border:1px solid rgba(255,255,255,.28);
+    background:transparent;color:inherit;cursor:pointer}
+  .syncbtn:hover{border-color:var(--gold);color:var(--gold)}
+  .syncbtn.primary{background:var(--gold);border-color:var(--gold);color:#1A1714;font-weight:700}
+  .syncbtn.primary:hover{color:#1A1714;filter:brightness(1.08)}
+  .syncbtn.danger:hover{border-color:#C0392B;color:#C0392B}
+  .syncrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .syncpanel,.syncchoice{margin:10px 0 0;padding:12px 14px;border-radius:5px;
+    border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.22);max-width:520px}
+  .syncpanel label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:8px}
+  .syncpanel input{display:block;width:100%;margin-top:4px;padding:7px 9px;
+    font-family:var(--mono);font-size:13px;color:var(--ink);
+    background:var(--stock);border:1px solid rgba(0,0,0,.25);border-radius:3px}
+  .syncfine{margin:8px 0 0;font-size:11px;line-height:1.5;color:var(--muted)}
+  .syncfine b{color:var(--stock-dk)}
+  .syncchoice p{margin:0;font-size:13px;color:var(--stock)}
+  /* <<< binderz-sync css <<< */
 </style>
 
 <div class="top">
@@ -382,7 +411,43 @@
     <button class="act" id="btnLoad">Load a saved binder</button>
     <input type="file" id="file" accept=".json,application/json,text/plain" hidden>
     <p class="fine" id="persistNote"></p>
-  </aside>
+    <!-- >>> binderz-sync ui >>> -->
+    <div class="syncbar">
+      <span class="syncdot" id="syncDot"></span>
+      <span id="syncMsg">Sync off</span>
+      <button class="syncbtn" id="btnSyncNow" hidden>Sync now</button>
+      <button class="syncbtn" id="btnSyncCfg">Set up sync</button>
+    </div>
+
+    <div class="syncchoice" id="syncChoice" hidden>
+      <p id="syncChoiceMsg"></p>
+      <div class="syncrow">
+        <button class="syncbtn primary" id="btnTakeCloud">Use the cloud copy</button>
+        <button class="syncbtn" id="btnMergeBoth">Merge both</button>
+      </div>
+    </div>
+
+    <div class="syncpanel" id="syncPanel" hidden>
+      <label>GitHub account
+        <input id="ghOwner" type="text" autocomplete="off" spellcheck="false"></label>
+      <label>Data repo
+        <input id="ghRepo" type="text" autocomplete="off" spellcheck="false"></label>
+      <label>Branch
+        <input id="ghBranch" type="text" autocomplete="off" spellcheck="false"></label>
+      <label>Access token
+        <input id="ghToken" type="password" autocomplete="off" spellcheck="false"></label>
+      <p class="syncfine">Use a <b>fine-grained</b> token with <b>Contents: Read and write</b>
+        on that one repo. It is stored in this browser only &mdash; anyone with this
+        device unlocked can read it.</p>
+      <p class="syncfine" id="syncNote"></p>
+      <div class="syncrow">
+        <button class="syncbtn primary" id="btnSyncSave">Connect</button>
+        <button class="syncbtn" id="btnSyncClose">Cancel</button>
+        <button class="syncbtn danger" id="btnSyncOff" hidden>Disconnect</button>
+      </div>
+    </div>
+    <!-- <<< binderz-sync ui <<< -->
+      </aside>
 
   <main class="stage">
     <div class="nav">
@@ -497,7 +562,7 @@ async function loadOwned() {
       if (raw) owned = new Set(JSON.parse(raw));
     }
   } catch (e) { /* nothing saved yet, or storage is blocked here */ }
-  if (!owned.size) owned = new Set(SEED);   // first visit: start from the saved binder
+  if (!owned.size && !SYNC.isOn()) owned = new Set(SEED);   // first visit: start from the saved binder
   $("persistNote").textContent = (store || ls)
     ? "Saved in this browser as you go. Use the file for backups and other devices."
     : "Storage is blocked here, so picks last for this session only \u2014 save to a file to keep them.";
@@ -505,6 +570,7 @@ async function loadOwned() {
 
 let saveTimer = null;
 function persist() {
+  SYNC.changed();
   if (!store && !ls) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -920,7 +986,460 @@ $("file").onchange = e => {
 };
 
 S.leaf = startLeaf();
-loadOwned().then(render);
+
+/* >>> binderz-sync js >>> */
+/* ============================================================
+   Binderz — cross-device sync via GitHub
+   Canonical source: Binderz/assets/binder-sync.js
+   Inlined into each set's index.html by Binderz/assets/patch_sync.py.
+   Placeholders are filled in at inline time.
+
+   How it works
+   ------------
+   Each set's ownership list lives as one JSON file in a private
+   data repo (NOT a Pages repo — pushing to a Pages repo would
+   trigger a site rebuild on every save and hit the 10-builds-per-
+   hour soft limit).
+
+   Reads and writes go through the GitHub contents API with a
+   fine-grained token the user pastes once per device. Because both
+   binder sites are served from the same github.io origin, they
+   share that token automatically.
+
+   Divergence is resolved with a proper 3-way set merge against the
+   last-synced snapshot, so adds and removes made on two devices
+   both survive.
+   ============================================================ */
+const SYNC = (function () {
+  "use strict";
+
+  const SET_ID    = "topps2026s1";
+  const SET_NAME  = "2026 Topps Series 1";
+  const CFG_KEY   = "binderz-gh-config";          // shared by every binder on this origin
+  const STATE_KEY = "binderz-sync-" + SET_ID;     // per-set sync state
+  const API       = "https://api.github.com";
+  const DEF       = { owner: "johnmichaelpowell-spec", repo: "bindrz-data", branch: "main" };
+
+  const PUSH_DELAY = 2500;    // debounce after the last tap
+  const POLL_MS    = 60000;   // re-check while the tab is visible
+
+  let cfg       = null;                      // {token, owner, repo, branch}
+  let state     = { base: [], rev: 0, synced: false };
+  let pushTimer = null, pollTimer = null;
+  let busy = false, pending = false;
+  let status = { kind: "off", msg: "Sync off", at: 0 };
+  let awaitingChoice = false;
+  let suppress = false;   // true while we are writing remote state into the page
+
+  /* ---------------- storage helpers ---------------- */
+
+  function readLS(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch (e) { return fallback; }
+  }
+  function writeLS(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
+  function dropLS(key) {
+    try { localStorage.removeItem(key); } catch (e) {}
+  }
+
+  /* ---------------- base64 that survives accents ---------------- */
+  /* Card data carries names like José and Estevéz, so btoa() alone
+     would throw. Chunked to avoid blowing the stack on big sets. */
+
+  function b64encode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let out = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(out);
+  }
+  function b64decode(b64) {
+    const bin = atob(String(b64).replace(/\s/g, ""));
+    return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+  }
+
+  /* ---------------- 3-way merge ---------------- */
+  /* base   = what both sides agreed on at last sync
+     local  = what this device thinks now
+     remote = what the cloud says now
+     Anything added here gets added; anything removed here gets
+     removed; everything else defers to remote. */
+
+  function mergeSets(baseArr, localSet, remoteArr) {
+    const base = new Set(baseArr);
+    const out  = new Set(remoteArr);
+    for (const id of localSet) if (!base.has(id)) out.add(id);
+    for (const id of base) if (!localSet.has(id)) out.delete(id);
+    return out;
+  }
+
+  function sameSet(a, b) {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  }
+
+  /* ---------------- device label, for commit messages ---------------- */
+
+  function deviceLabel() {
+    const ua = navigator.userAgent || "";
+    if (/iPhone/.test(ua)) return "iPhone";
+    if (/iPad/.test(ua)) return "iPad";
+    if (/Android/.test(ua)) return "Android";
+    if (/Mac OS X|Macintosh/.test(ua)) return "Mac";
+    if (/Windows/.test(ua)) return "Windows";
+    return "browser";
+  }
+
+  /* ---------------- GitHub contents API ---------------- */
+
+  function filePath() { return SET_ID + ".json"; }
+
+  function endpoint() {
+    return API + "/repos/" + encodeURIComponent(cfg.owner) + "/" +
+           encodeURIComponent(cfg.repo) + "/contents/" + filePath();
+  }
+
+  function headers() {
+    return {
+      "Authorization": "Bearer " + cfg.token,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+  }
+
+  /* Returns {exists, sha, data} or throws a friendly Error. */
+  async function fetchRemote() {
+    const url = endpoint() + "?ref=" + encodeURIComponent(cfg.branch) + "&t=" + Date.now();
+    let res;
+    try {
+      res = await fetch(url, { headers: headers(), cache: "no-store" });
+    } catch (e) {
+      throw new Error("offline");
+    }
+    if (res.status === 404) return { exists: false, sha: null, data: { owned: [], rev: 0 } };
+    if (res.status === 401) throw new Error("badtoken");
+    if (res.status === 403) throw new Error("forbidden");
+    if (!res.ok) throw new Error("http" + res.status);
+
+    const body = await res.json();
+    let data;
+    try { data = JSON.parse(b64decode(body.content)); }
+    catch (e) { throw new Error("corrupt"); }
+    if (!data || !Array.isArray(data.owned)) throw new Error("corrupt");
+    return { exists: true, sha: body.sha, data: data };
+  }
+
+  async function putRemote(ownedArr, rev, sha) {
+    const payload = {
+      set: SET_NAME,
+      setId: SET_ID,
+      rev: rev,
+      updated: new Date().toISOString(),
+      device: deviceLabel(),
+      count: ownedArr.length,
+      owned: ownedArr
+    };
+    const body = {
+      message: "binder: " + SET_NAME + " — " + ownedArr.length + " cards (" + deviceLabel() + ")",
+      content: b64encode(JSON.stringify(payload, null, 1)),
+      branch: cfg.branch
+    };
+    if (sha) body.sha = sha;
+
+    let res;
+    try {
+      res = await fetch(endpoint(), {
+        method: "PUT", headers: headers(), body: JSON.stringify(body)
+      });
+    } catch (e) {
+      throw new Error("offline");
+    }
+    if (res.status === 401) throw new Error("badtoken");
+    if (res.status === 403) throw new Error("forbidden");
+    if (res.status === 409 || res.status === 422) throw new Error("conflict");
+    if (!res.ok) throw new Error("http" + res.status);
+    return res.json();
+  }
+
+  /* ---------------- status ---------------- */
+
+  const MESSAGES = {
+    offline:   "No connection — picks are safe here and will sync later",
+    badtoken:  "Token expired or revoked — set up sync again",
+    forbidden: "Token doesn't have access to that repo",
+    corrupt:   "Cloud copy is unreadable — push from a good device to repair",
+    conflict:  "Another device wrote first — retrying"
+  };
+
+  function setStatus(kind, msg) {
+    status = { kind: kind, msg: msg, at: Date.now() };
+    paint();
+  }
+
+  function ago(ms) {
+    const s = Math.round((Date.now() - ms) / 1000);
+    if (s < 10) return "just now";
+    if (s < 60) return s + "s ago";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + "m ago";
+    return Math.round(m / 60) + "h ago";
+  }
+
+  function paint() {
+    const dot = document.getElementById("syncDot");
+    const msg = document.getElementById("syncMsg");
+    const now = document.getElementById("btnSyncNow");
+    const cfgBtn = document.getElementById("btnSyncCfg");
+    if (!dot || !msg) return;
+
+    dot.className = "syncdot " + status.kind;
+    msg.textContent = status.kind === "ok" && status.at
+      ? "Synced " + ago(status.at)
+      : status.msg;
+    if (now) now.hidden = !cfg;
+    if (cfgBtn) cfgBtn.textContent = cfg ? "Sync settings" : "Set up sync";
+  }
+
+  /* ---------------- the two operations ---------------- */
+
+  async function pull(opts) {
+    opts = opts || {};
+    if (!cfg || busy || awaitingChoice) return;
+    busy = true;
+    if (opts.loud) setStatus("work", "Checking…");
+    try {
+      const remote = await fetchRemote();
+
+      // Never synced here, and the cloud already has something that
+      // disagrees with this device? Let the user decide rather than
+      // silently picking a winner.
+      if (!state.synced && remote.exists) {
+        const remoteSet = new Set(remote.data.owned);
+        if (!sameSet(remoteSet, owned) && owned.size > 0) {
+          offerChoice(remote);
+          busy = false;
+          return;
+        }
+        adopt(remoteSet, remote.data.rev);
+        busy = false;
+        setStatus("ok", "Synced");
+        return;
+      }
+
+      const merged = mergeSets(state.base, owned, remote.data.owned);
+      const changedHere   = !sameSet(merged, owned);
+      const changedRemote = !sameSet(merged, new Set(remote.data.owned));
+
+      if (changedHere) adopt(merged, remote.data.rev);
+      else { state.base = [...merged]; state.rev = remote.data.rev; state.synced = true; saveState(); }
+
+      setStatus("ok", "Synced");
+      if (changedRemote) schedulePush();   // this device has something the cloud lacks
+    } catch (e) {
+      setStatus(e.message === "offline" ? "warn" : "err",
+                MESSAGES[e.message] || "Sync problem — will retry");
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function push(retry) {
+    if (!cfg || awaitingChoice) return;
+    if (busy) { pending = true; return; }
+    busy = true;
+    setStatus("work", "Saving…");
+    try {
+      const remote = await fetchRemote();
+      let next = new Set(owned);
+
+      // Someone else moved the cloud since our last sync — reconcile first.
+      if (remote.exists && remote.data.rev !== state.rev) {
+        next = mergeSets(state.base, owned, remote.data.owned);
+        if (!sameSet(next, owned)) adopt(next, remote.data.rev);
+      }
+
+      const arr = [...next].sort();
+      const rev = (remote.data.rev || 0) + 1;
+      await putRemote(arr, rev, remote.sha);
+
+      state.base = arr; state.rev = rev; state.synced = true;
+      saveState();
+      setStatus("ok", "Synced");
+    } catch (e) {
+      if (e.message === "conflict" && !retry) { busy = false; return push(true); }
+      setStatus(e.message === "offline" ? "warn" : "err",
+                MESSAGES[e.message] || "Couldn't save to the cloud — will retry");
+    } finally {
+      busy = false;
+      if (pending) { pending = false; schedulePush(); }
+    }
+  }
+
+  /* Replace local ownership with `set`, keeping the page honest.
+     persist() calls back into SYNC.changed(), so suppress that for
+     the duration — otherwise adopting the cloud copy would schedule
+     a push of the thing we just pulled. */
+  function adopt(set, rev) {
+    owned = new Set(set);
+    state.base = [...owned].sort();
+    state.rev = rev || 0;
+    state.synced = true;
+    saveState();
+    cache = null;
+    suppress = true;
+    persist();
+    suppress = false;
+    render();
+  }
+
+  function saveState() { writeLS(STATE_KEY, state); }
+
+  function schedulePush() {
+    if (!cfg || awaitingChoice || suppress) return;
+    clearTimeout(pushTimer);
+    setStatus("work", "Saving…");
+    pushTimer = setTimeout(push, PUSH_DELAY);
+  }
+
+  /* ---------------- first-connect reconciliation ---------------- */
+
+  function offerChoice(remote) {
+    awaitingChoice = true;
+    const bar = document.getElementById("syncChoice");
+    const txt = document.getElementById("syncChoiceMsg");
+    if (!bar || !txt) { awaitingChoice = false; return; }
+    txt.textContent =
+      "This device has " + owned.size + " cards marked; the cloud copy has " +
+      remote.data.owned.length + ". Which is right?";
+    bar.hidden = false;
+    setStatus("warn", "Needs a decision");
+
+    document.getElementById("btnTakeCloud").onclick = () => {
+      bar.hidden = true; awaitingChoice = false;
+      adopt(new Set(remote.data.owned), remote.data.rev);
+      setStatus("ok", "Synced");
+    };
+    document.getElementById("btnMergeBoth").onclick = () => {
+      bar.hidden = true; awaitingChoice = false;
+      const both = new Set(remote.data.owned);
+      for (const id of owned) both.add(id);
+      adopt(both, remote.data.rev);
+      schedulePush();
+    };
+  }
+
+  /* ---------------- settings panel ---------------- */
+
+  function openPanel() {
+    const p = document.getElementById("syncPanel");
+    if (!p) return;
+    document.getElementById("ghOwner").value  = (cfg && cfg.owner)  || DEF.owner;
+    document.getElementById("ghRepo").value   = (cfg && cfg.repo)   || DEF.repo;
+    document.getElementById("ghBranch").value = (cfg && cfg.branch) || DEF.branch;
+    document.getElementById("ghToken").value  = "";
+    document.getElementById("ghToken").placeholder =
+      cfg ? "Token saved — leave blank to keep it" : "github_pat_…";
+    document.getElementById("btnSyncOff").hidden = !cfg;
+    p.hidden = false;
+  }
+
+  function closePanel() {
+    const p = document.getElementById("syncPanel");
+    if (p) p.hidden = true;
+  }
+
+  function saveConfig() {
+    const owner  = document.getElementById("ghOwner").value.trim();
+    const repo   = document.getElementById("ghRepo").value.trim();
+    const branch = document.getElementById("ghBranch").value.trim() || "main";
+    const token  = document.getElementById("ghToken").value.trim();
+    const note   = document.getElementById("syncNote");
+
+    if (!owner || !repo) { if (note) note.textContent = "Account and repo are both needed."; return; }
+    if (!token && !(cfg && cfg.token)) { if (note) note.textContent = "Paste a token to connect."; return; }
+
+    cfg = { owner, repo, branch, token: token || cfg.token };
+    writeLS(CFG_KEY, cfg);
+    if (note) note.textContent = "";
+    closePanel();
+    setStatus("work", "Connecting…");
+    startPolling();
+    pull({ loud: true }).then(() => { if (!state.synced) schedulePush(); });
+  }
+
+  function disconnect() {
+    cfg = null;
+    dropLS(CFG_KEY);
+    dropLS(STATE_KEY);
+    state = { base: [], rev: 0, synced: false };
+    stopPolling();
+    closePanel();
+    setStatus("off", "Sync off");
+  }
+
+  /* ---------------- polling ---------------- */
+
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === "visible") pull();
+    }, POLL_MS);
+  }
+  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+
+  /* ---------------- boot ---------------- */
+
+  function wire() {
+    const cfgBtn = document.getElementById("btnSyncCfg");
+    const nowBtn = document.getElementById("btnSyncNow");
+    if (cfgBtn) cfgBtn.onclick = () => {
+      const p = document.getElementById("syncPanel");
+      if (p && !p.hidden) closePanel(); else openPanel();
+    };
+    if (nowBtn) nowBtn.onclick = () => pull({ loud: true });
+    const save = document.getElementById("btnSyncSave");
+    const off  = document.getElementById("btnSyncOff");
+    const x    = document.getElementById("btnSyncClose");
+    if (save) save.onclick = saveConfig;
+    if (off)  off.onclick  = disconnect;
+    if (x)    x.onclick    = closePanel;
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") pull();
+    });
+    window.addEventListener("online", () => pull());
+    // Best-effort flush if a save is still pending when the tab goes away.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && pushTimer) {
+        clearTimeout(pushTimer); push();
+      }
+    });
+  }
+
+  async function init() {
+    cfg   = readLS(CFG_KEY, null);
+    state = readLS(STATE_KEY, { base: [], rev: 0, synced: false });
+    wire();
+    if (!cfg) { setStatus("off", "Sync off — this browser only"); return; }
+    startPolling();
+    await pull({ loud: true });
+  }
+
+  return {
+    init: init,
+    changed: schedulePush,     // called from persist()
+    isOn: () => !!cfg,
+    hasSynced: () => !!(state && state.synced)
+  };
+})();
+
+/* <<< binderz-sync js <<< */
+
+loadOwned().then(() => { render(); SYNC.init(); });
 </script>
 
 </html>
