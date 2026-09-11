@@ -337,6 +337,43 @@
   .syncfine b{color:var(--stock-dk)}
   .syncchoice p{margin:0;font-size:13px;color:var(--stock)}
   /* <<< binderz-sync css <<< */
+/* >>> binderz-values css >>> */
+  /* ---------- card values ---------- */
+  .pval{position:absolute;top:2px;left:3px;z-index:2;font-family:var(--mono);
+    font-size:8px;line-height:1.3;padding:1px 3px;border-radius:2px;
+    background:rgba(0,0,0,.6);color:var(--stock)}
+  .pval.set{background:var(--gold);color:#14181F;font-weight:500}
+  body.val-edit .pocket{box-shadow:inset 0 0 0 2px var(--gold)}
+  body.val-edit .pocket:hover{transform:none;filter:brightness(1.07)}
+  .stat b.val{color:var(--gold)}
+
+  .valpanel{margin:10px 0 0;padding:11px 13px;border-radius:5px;
+    border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.22)}
+  .valrow{display:flex;align-items:center;gap:10px;justify-content:space-between;
+    padding:5px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+  .valrow:last-child{border-bottom:0}
+  .valname{font-size:12px;display:flex;flex-direction:column;line-height:1.35}
+  .valname i{font-style:normal;font-size:10px;color:var(--muted);margin-top:1px}
+  .valin{display:flex;align-items:center;gap:3px;flex:none}
+  .valin em{font-style:normal;font-size:11px;color:var(--muted)}
+  .valin input{width:76px;padding:4px 6px;font-family:var(--mono);font-size:12px;
+    color:var(--ink);background:var(--stock);border:1px solid rgba(0,0,0,.25);border-radius:3px}
+  .valchk{display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;
+    color:var(--muted);cursor:pointer}
+  .act.on{border-color:var(--gold);color:var(--gold)}
+
+  .valedit{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(14px + env(safe-area-inset-bottom));z-index:40;
+    width:min(420px,calc(100vw - 28px));padding:12px 14px;border-radius:6px;
+    background:var(--vinyl-dk);border:1px solid var(--gold);
+    box-shadow:0 12px 36px rgba(0,0,0,.55)}
+  .valedit b{display:block;font-size:13px;color:var(--stock)}
+  .valedit i{font-style:normal;display:block;font-size:11px;color:var(--muted);margin-top:2px}
+  .valedit .r{display:flex;gap:8px;align-items:center;margin-top:11px}
+  .valedit input{flex:1;min-width:0;padding:7px 9px;font-family:var(--mono);font-size:14px;
+    color:var(--ink);background:var(--stock);border:1px solid rgba(0,0,0,.25);border-radius:3px}
+  @media print{.pval,.valedit,.valpanel{display:none!important}}
+  /* <<< binderz-values css <<< */
 </style>
 
 <div class="top">
@@ -349,10 +386,24 @@
     <div class="stat"><b class="on" id="tHave">0</b><span>In binder</span></div>
     <div class="stat"><b id="tNeed">0</b><span>Still needed</span></div>
     <div class="stat"><b id="tPages">0</b><span>Pages</span></div>
+    <!-- >>> binderz-values-stat ui >>> --><div class="stat"><b class="val" id="tValue">$0</b><span>Value</span></div><!-- <<< binderz-values-stat ui <<< -->
   </div>
 </div>
 
 <div id="printout"></div>
+    <!-- >>> binderz-values-edit ui >>> -->
+<div class="valedit" id="valEdit" hidden>
+  <b id="valEditWho"></b>
+  <i id="valEditWhere"></i>
+  <div class="r">
+    <input id="valEditAmt" type="number" min="0" step="0.01" inputmode="decimal"
+      autocomplete="off" placeholder="0">
+    <button class="syncbtn primary" id="valEditOk">Set</button>
+    <button class="syncbtn" id="valEditCancel">Cancel</button>
+    <button class="syncbtn danger" id="valEditClear" hidden>Clear</button>
+  </div>
+</div>
+<!-- <<< binderz-values-edit ui <<< -->
 
 <div class="wrap">
   <aside class="rail">
@@ -396,7 +447,25 @@
     </div>
 
     <hr>
+    <!-- >>> binderz-values-rail ui >>> -->
     <div class="fieldset">
+      <p class="lbl">Card values</p>
+      <button class="act" id="btnValues">Set baselines</button>
+      <button class="act" id="btnValEdit">Edit card values</button>
+      <p class="fine" id="valHint" hidden>Click a pocket to set that card&rsquo;s value.
+        Leave the box empty to go back to the baseline.</p>
+      <div class="valpanel" id="valPanel" hidden>
+        <div id="valRows"></div>
+        <label class="valchk"><input type="checkbox" id="valBadges"> Show values on cards</label>
+        <p class="syncfine" id="valOverrides"></p>
+        <div class="syncrow">
+          <button class="syncbtn" id="btnValReset">Reset baselines</button>
+          <button class="syncbtn danger" id="btnValClearAll" hidden>Clear overrides</button>
+        </div>
+      </div>
+    </div>
+<!-- <<< binderz-values-rail ui <<< -->
+<div class="fieldset">
       <p class="lbl">Print</p>
       <div class="seg" id="printSeg">
         <button data-m="pages" aria-pressed="true">Binder pages</button>
@@ -446,8 +515,8 @@
         <button class="syncbtn danger" id="btnSyncOff" hidden>Disconnect</button>
       </div>
     </div>
-    <!-- <<< binderz-sync ui <<< -->
-          </aside>
+<!-- <<< binderz-sync ui <<< -->
+                  </aside>
 
   <main class="stage">
     <div class="nav">
@@ -682,7 +751,7 @@ function pocketHtml(slot, idx) {
          <span class="tm">${esc(teamOf(slot))}</span>
        </div>`;
   return `<button class="pocket" data-i="${idx}" aria-pressed="${has}"
-    aria-label="${esc(slot.num + " " + label(slot))}${has ? ", in binder" : ", not yet"}">${inner}${flags}</button>`;
+    aria-label="${esc(slot.num + " " + label(slot))}${has ? ", in binder" : ", not yet"}">${inner}${flags}${VALUES.badge(slot)}</button>`;
 }
 
 const shortName = s => s.players.length > 1
@@ -743,6 +812,7 @@ function render() {
   $("tHave").textContent = have;
   $("tNeed").textContent = list.length - have;
   $("tPages").textContent = pages;
+  VALUES.refresh();
   $("meterBar").style.width = (list.length ? (have / list.length) * 100 : 0) + "%";
   $("meterTxt").textContent = have + " of " + list.length + " cards";
   updatePrintNote();
@@ -779,6 +849,7 @@ $("binder").addEventListener("click", e => {
   const list = currentSlots();
   const slot = list[+p.dataset.i];
   if (!slot) return;
+  if (VALUES.isEditing()) { VALUES.edit(slot); showCard(slot); return; }
   owned.has(slot.id) ? owned.delete(slot.id) : owned.add(slot.id);
   if (S.need) cache = null;
   persist(); render(); showCard(slot);
@@ -961,7 +1032,7 @@ window.addEventListener("beforeprint", buildPrintout);
 /* file save / load */
 $("btnSave").onclick = () => {
   const blob = new Blob([JSON.stringify({ set:"2026 Topps Series 1", saved:new Date().toISOString(),
-    owned:[...owned] }, null, 2)], { type:"application/json" });
+    owned:[...owned], ...VALUES.snapshot() }, null, 2)], { type:"application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "series1-binder.json";
@@ -975,6 +1046,7 @@ $("file").onchange = e => {
     try {
       const d = JSON.parse(fr.result);
       owned = new Set(d.owned || []);
+      VALUES.apply({ rules: d.rules, values: d.values });
       cache = null; persist(); render();
       $("readout").innerHTML = `<span class="v"><b>Loaded.</b> ${owned.size} cards restored.</span>`;
     } catch (err) {
@@ -988,7 +1060,355 @@ $("file").onchange = e => {
 S.leaf = startLeaf();
 
 
-/* >>> binderz-sync js >>> */
+
+
+/* >>> binderz js >>> */
+/* ============================================================
+   Binderz — card values
+   Canonical source: Binderz/assets/binder-values.js
+   Inlined into each set's index.html by Binderz/assets/patch_sync.py.
+
+   Two layers, override first:
+     1. a per-card amount you typed for that exact card
+     2. a baseline for the bucket the card falls into
+
+   Buckets exist because a set has thousands of cards and about eight
+   kinds of value. Set eight numbers, override the handful that matter.
+
+   Both layers ride along in the synced payload, so they follow the
+   collection between devices the same way ownership does.
+   ============================================================ */
+const VALUES = (function () {
+  "use strict";
+
+  const VKEY = KEY.replace("-owned-", "-values-");
+
+  /* Order matters: the three specific BASE tests run before the BASE
+     catch-all, which is what makes "variation" mean "any other base card". */
+  const BUCKETS = [
+    { id: "base", name: "Base card",
+      test: s => s.cat === "BASE" && s.sub === "BASE SET" && !s.rc, def: 0.25 },
+    { id: "rc", name: "Base rookie",
+      test: s => s.cat === "BASE" && s.sub === "BASE SET" && s.rc, def: 2 },
+    { id: "sp", name: "Short print rookie",
+      test: s => s.cat === "BASE" && /SHORT PRINT/.test(s.sub), def: 15 },
+    { id: "var", name: "Base variation",
+      test: s => s.cat === "BASE", def: 3 },
+    { id: "ins", name: "Insert",
+      test: s => s.cat === "INSERT", def: 1.5 },
+    { id: "auto", name: "Autograph",
+      test: s => s.cat === "AUTOGRAPH", def: 25 },
+    { id: "autorelic", name: "Autograph relic",
+      test: s => s.cat === "AUTOGRAPH RELIC", def: 45 },
+    { id: "relic", name: "Relic",
+      test: s => s.cat === "RELIC", def: 10 },
+  ];
+
+  const DEFAULTS = BUCKETS.reduce((o, b) => (o[b.id] = b.def, o), {});
+
+  let rules = Object.assign({}, DEFAULTS);
+  let values = {};                 // cardId -> amount
+  let editing = false;
+  let showBadges = true;
+  let editSlot = null;
+
+  const byId = new Map(SLOTS.map(s => [s.id, s]));
+  const bucketCache = new Map();
+
+  /* ---------------- resolution ---------------- */
+
+  function bucketOf(slot) {
+    let b = bucketCache.get(slot.id);
+    if (b === undefined) {
+      const hit = BUCKETS.find(x => x.test(slot));
+      b = hit ? hit.id : "ins";
+      bucketCache.set(slot.id, b);
+    }
+    return b;
+  }
+
+  function valueOf(slot) {
+    if (Object.prototype.hasOwnProperty.call(values, slot.id)) {
+      return values[slot.id];
+    }
+    const r = rules[bucketOf(slot)];
+    return typeof r === "number" && isFinite(r) ? r : 0;
+  }
+
+  const isOverridden = slot =>
+    Object.prototype.hasOwnProperty.call(values, slot.id);
+
+  /* ---------------- money ---------------- */
+
+  function money(n) {
+    const whole = Math.abs(n - Math.round(n)) < 0.005;
+    return "$" + n.toLocaleString("en-US", {
+      minimumFractionDigits: whole ? 0 : 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function moneyFull(n) {
+    return "$" + n.toLocaleString("en-US",
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /* ---------------- totals ---------------- */
+
+  function totalOwned() {
+    let sum = 0;
+    for (const id of owned) {
+      const s = byId.get(id);
+      if (s) sum += valueOf(s);
+    }
+    return sum;
+  }
+
+  function bucketRows() {
+    const rows = BUCKETS.map(b => ({ id: b.id, name: b.name, owned: 0, sum: 0 }));
+    const index = rows.reduce((o, r, i) => (o[r.id] = i, o), {});
+    for (const id of owned) {
+      const s = byId.get(id);
+      if (!s) continue;
+      const r = rows[index[bucketOf(s)]];
+      r.owned += 1;
+      r.sum += valueOf(s);
+    }
+    return rows;
+  }
+
+  /* ---------------- storage ---------------- */
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(VKEY);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d && typeof d === "object") {
+          rules = Object.assign({}, DEFAULTS, d.rules || {});
+          values = d.values || {};
+          if (typeof d.showBadges === "boolean") showBadges = d.showBadges;
+        }
+      }
+    } catch (e) { /* nothing saved, or storage blocked */ }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(VKEY, JSON.stringify(
+        { rules: rules, values: values, showBadges: showBadges }));
+    } catch (e) { /* storage blocked; sync still carries it */ }
+  }
+
+  /* ---------------- what sync reads and writes ---------------- */
+
+  function snapshot() {
+    return { rules: Object.assign({}, rules), values: Object.assign({}, values) };
+  }
+
+  function apply(obj) {
+    if (!obj) return;
+    if (obj.rules) rules = Object.assign({}, DEFAULTS, obj.rules);
+    if (obj.values) values = Object.assign({}, obj.values);
+    save();
+    paintPanel();
+  }
+
+  /* A user edit: persist locally, let sync pick it up, repaint. */
+  function touched() {
+    save();
+    persist();
+    paintPanel();
+    render();
+  }
+
+  /* ---------------- pocket badge ---------------- */
+
+  function badge(slot) {
+    if (!showBadges || !slot) return "";
+    const v = valueOf(slot);
+    if (!v) return "";
+    return '<span class="pval' + (isOverridden(slot) ? " set" : "") + '">'
+      + money(v) + "</span>";
+  }
+
+  /* ---------------- the editor ---------------- */
+
+  function openEditor(slot) {
+    editSlot = slot;
+    const bar = document.getElementById("valEdit");
+    if (!bar) return;
+    document.getElementById("valEditWho").textContent =
+      slot.num + "  " + label(slot);
+    document.getElementById("valEditWhere").textContent =
+      (BUCKETS.find(b => b.id === bucketOf(slot)) || {}).name
+      + " baseline " + money(rules[bucketOf(slot)] || 0);
+    const input = document.getElementById("valEditAmt");
+    input.value = isOverridden(slot) ? values[slot.id] : "";
+    input.placeholder = String(rules[bucketOf(slot)] || 0);
+    document.getElementById("valEditClear").hidden = !isOverridden(slot);
+    bar.hidden = false;
+    input.focus();
+    input.select();
+  }
+
+  function closeEditor() {
+    editSlot = null;
+    const bar = document.getElementById("valEdit");
+    if (bar) bar.hidden = true;
+  }
+
+  function commitEditor() {
+    if (!editSlot) return;
+    const raw = document.getElementById("valEditAmt").value.trim();
+    if (raw === "") {
+      delete values[editSlot.id];
+    } else {
+      const n = parseFloat(raw.replace(/[$,]/g, ""));
+      if (!isFinite(n) || n < 0) {
+        document.getElementById("valEditAmt").focus();
+        return;
+      }
+      values[editSlot.id] = Math.round(n * 100) / 100;
+    }
+    closeEditor();
+    touched();
+  }
+
+  function clearOverride() {
+    if (!editSlot) return;
+    delete values[editSlot.id];
+    closeEditor();
+    touched();
+  }
+
+  /* ---------------- the baselines panel ---------------- */
+
+  function paintPanel() {
+    const tally = document.getElementById("tValue");
+    if (tally) tally.textContent = money(totalOwned());
+
+    const body = document.getElementById("valRows");
+    if (!body) return;
+
+    const rows = bucketRows();
+    body.innerHTML = rows.map(r =>
+      '<label class="valrow">'
+      + '<span class="valname">' + r.name
+      + '<i>' + r.owned + (r.owned === 1 ? " card" : " cards")
+      + (r.owned ? " · " + money(r.sum) : "") + '</i></span>'
+      + '<span class="valin"><em>$</em>'
+      + '<input type="number" min="0" step="0.01" inputmode="decimal" '
+      + 'data-bucket="' + r.id + '" value="' + (rules[r.id] != null ? rules[r.id] : "") + '">'
+      + '</span></label>'
+    ).join("");
+
+    const n = Object.keys(values).length;
+    const note = document.getElementById("valOverrides");
+    if (note) {
+      note.textContent = n
+        ? n + (n === 1 ? " card has" : " cards have") + " a value you set by hand."
+        : "No cards overridden yet.";
+      const btn = document.getElementById("btnValClearAll");
+      if (btn) btn.hidden = !n;
+    }
+  }
+
+  function setEditing(on) {
+    editing = on;
+    document.body.classList.toggle("val-edit", editing);
+    const b = document.getElementById("btnValEdit");
+    if (b) {
+      b.textContent = editing ? "Done editing values" : "Edit card values";
+      b.classList.toggle("on", editing);
+    }
+    const hint = document.getElementById("valHint");
+    if (hint) hint.hidden = !editing;
+    if (!editing) closeEditor();
+  }
+
+  /* ---------------- wiring ---------------- */
+
+  function wire() {
+    const panel = document.getElementById("valPanel");
+
+    const toggle = document.getElementById("btnValues");
+    if (toggle && panel) {
+      toggle.onclick = () => {
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) paintPanel();
+      };
+    }
+
+    const rows = document.getElementById("valRows");
+    if (rows) {
+      rows.addEventListener("change", e => {
+        const input = e.target.closest("input[data-bucket]");
+        if (!input) return;
+        const raw = input.value.trim();
+        const n = raw === "" ? 0 : parseFloat(raw);
+        rules[input.dataset.bucket] = isFinite(n) && n >= 0 ? n : 0;
+        touched();
+      });
+    }
+
+    const editBtn = document.getElementById("btnValEdit");
+    if (editBtn) editBtn.onclick = () => setEditing(!editing);
+
+    const badgeBox = document.getElementById("valBadges");
+    if (badgeBox) {
+      badgeBox.checked = showBadges;
+      badgeBox.onchange = () => { showBadges = badgeBox.checked; touched(); };
+    }
+
+    const reset = document.getElementById("btnValReset");
+    if (reset) reset.onclick = () => {
+      rules = Object.assign({}, DEFAULTS);
+      touched();
+    };
+
+    const clearAll = document.getElementById("btnValClearAll");
+    if (clearAll) clearAll.onclick = () => {
+      values = {};
+      touched();
+    };
+
+    const ok = document.getElementById("valEditOk");
+    if (ok) ok.onclick = commitEditor;
+    const cancel = document.getElementById("valEditCancel");
+    if (cancel) cancel.onclick = closeEditor;
+    const clear = document.getElementById("valEditClear");
+    if (clear) clear.onclick = clearOverride;
+
+    const amt = document.getElementById("valEditAmt");
+    if (amt) {
+      amt.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); commitEditor(); }
+        if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
+      });
+    }
+  }
+
+  function init() {
+    load();
+    wire();
+    paintPanel();
+  }
+
+  return {
+    init: init,
+    badge: badge,
+    valueOf: valueOf,
+    total: totalOwned,
+    isEditing: () => editing,
+    edit: openEditor,
+    refresh: paintPanel,
+    snapshot: snapshot,
+    apply: apply
+  };
+})();
+
+
 /* ============================================================
    Binderz — cross-device sync via GitHub
    Canonical source: Binderz/assets/binder-sync.js
@@ -1028,7 +1448,7 @@ const SYNC = (function () {
      init() and asks isOn() whether to fall back to SEED, so waiting
      until init() to load this would leave that gate always false. */
   let cfg       = readLS(CFG_KEY, null);     // {token, owner, repo, branch}
-  let state     = { base: [], rev: 0, synced: false };
+  let state     = { base: [], baseRules: {}, baseValues: {}, rev: 0, synced: false };
   let pushTimer = null, pollTimer = null;
   let busy = false, pending = false;
   let status = { kind: "off", msg: "Sync off", at: 0 };
@@ -1086,6 +1506,42 @@ const SYNC = (function () {
     return true;
   }
 
+  /* Same idea for the value maps (baselines, per-card overrides), but
+     decided key by key: a baseline you changed here and a card you
+     priced on the phone both survive. When the same key moved on both
+     sides, remote wins, so two devices settle rather than ping-pong. */
+
+  function mergeMaps(base, local, remote) {
+    const out = Object.assign({}, remote);
+    const keys = new Set(
+      Object.keys(base).concat(Object.keys(local), Object.keys(remote)));
+    for (const k of keys) {
+      const b = base[k], l = local[k], r = remote[k];
+      const movedHere  = l !== b;
+      const movedThere = r !== b;
+      if (movedHere && !movedThere) {
+        if (l === undefined) delete out[k]; else out[k] = l;
+      }
+    }
+    return out;
+  }
+
+  function sameMap(a, b) {
+    const ak = Object.keys(a), bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    return ak.every(k => a[k] === b[k]);
+  }
+
+  /* The page's value layer, defensively — an older inlined build may
+     not have it. */
+  const vals = {
+    get: () => (typeof VALUES !== "undefined" && VALUES.snapshot)
+      ? VALUES.snapshot() : { rules: {}, values: {} },
+    set: obj => {
+      if (typeof VALUES !== "undefined" && VALUES.apply) VALUES.apply(obj);
+    }
+  };
+
   /* ---------------- device label, for commit messages ---------------- */
 
   function deviceLabel() {
@@ -1124,7 +1580,10 @@ const SYNC = (function () {
     } catch (e) {
       throw new Error("offline");
     }
-    if (res.status === 404) return { exists: false, sha: null, data: { owned: [], rev: 0 } };
+    if (res.status === 404) {
+      return { exists: false, sha: null,
+               data: { owned: [], rules: {}, values: {}, rev: 0 } };
+    }
     if (res.status === 401) throw new Error("badtoken");
     if (res.status === 403) throw new Error("forbidden");
     if (!res.ok) throw new Error("http" + res.status);
@@ -1134,10 +1593,13 @@ const SYNC = (function () {
     try { data = JSON.parse(b64decode(body.content)); }
     catch (e) { throw new Error("corrupt"); }
     if (!data || !Array.isArray(data.owned)) throw new Error("corrupt");
+    // Files written before values existed simply have neither key.
+    if (!data.rules || typeof data.rules !== "object") data.rules = {};
+    if (!data.values || typeof data.values !== "object") data.values = {};
     return { exists: true, sha: body.sha, data: data };
   }
 
-  async function putRemote(ownedArr, rev, sha) {
+  async function putRemote(ownedArr, maps, rev, sha) {
     const payload = {
       set: SET_NAME,
       setId: SET_ID,
@@ -1145,7 +1607,9 @@ const SYNC = (function () {
       updated: new Date().toISOString(),
       device: deviceLabel(),
       count: ownedArr.length,
-      owned: ownedArr
+      owned: ownedArr,
+      rules: maps.rules,
+      values: maps.values
     };
     const body = {
       message: "binder: " + SET_NAME + " — " + ownedArr.length + " cards (" + deviceLabel() + ")",
@@ -1228,18 +1692,29 @@ const SYNC = (function () {
           busy = false;
           return;
         }
-        adopt(remoteSet, remote.data.rev);
+        adopt(remoteSet, remote.data.rev,
+              { rules: remote.data.rules, values: remote.data.values });
         busy = false;
         setStatus("ok", "Synced");
         return;
       }
 
+      const mine = vals.get();
       const merged = mergeSets(state.base, owned, remote.data.owned);
-      const changedHere   = !sameSet(merged, owned);
-      const changedRemote = !sameSet(merged, new Set(remote.data.owned));
+      const mergedMaps = {
+        rules:  mergeMaps(state.baseRules,  mine.rules,  remote.data.rules),
+        values: mergeMaps(state.baseValues, mine.values, remote.data.values)
+      };
 
-      if (changedHere) adopt(merged, remote.data.rev);
-      else { state.base = [...merged]; state.rev = remote.data.rev; state.synced = true; saveState(); }
+      const changedHere = !sameSet(merged, owned)
+        || !sameMap(mergedMaps.rules, mine.rules)
+        || !sameMap(mergedMaps.values, mine.values);
+      const changedRemote = !sameSet(merged, new Set(remote.data.owned))
+        || !sameMap(mergedMaps.rules, remote.data.rules)
+        || !sameMap(mergedMaps.values, remote.data.values);
+
+      if (changedHere) adopt(merged, remote.data.rev, mergedMaps);
+      else rebase(merged, mergedMaps, remote.data.rev);
 
       setStatus("ok", "Synced");
       if (changedRemote) schedulePush();   // this device has something the cloud lacks
@@ -1259,19 +1734,23 @@ const SYNC = (function () {
     try {
       const remote = await fetchRemote();
       let next = new Set(owned);
+      let maps = vals.get();
 
       // Someone else moved the cloud since our last sync — reconcile first.
       if (remote.exists && remote.data.rev !== state.rev) {
         next = mergeSets(state.base, owned, remote.data.owned);
-        if (!sameSet(next, owned)) adopt(next, remote.data.rev);
+        maps = {
+          rules:  mergeMaps(state.baseRules,  maps.rules,  remote.data.rules),
+          values: mergeMaps(state.baseValues, maps.values, remote.data.values)
+        };
+        adopt(next, remote.data.rev, maps);
       }
 
       const arr = [...next].sort();
       const rev = (remote.data.rev || 0) + 1;
-      await putRemote(arr, rev, remote.sha);
+      await putRemote(arr, maps, rev, remote.sha);
 
-      state.base = arr; state.rev = rev; state.synced = true;
-      saveState();
+      rebase(new Set(arr), maps, rev);
       setStatus("ok", "Synced");
     } catch (e) {
       if (e.message === "conflict" && !retry) { busy = false; return push(true); }
@@ -1283,21 +1762,30 @@ const SYNC = (function () {
     }
   }
 
-  /* Replace local ownership with `set`, keeping the page honest.
-     persist() calls back into SYNC.changed(), so suppress that for
-     the duration — otherwise adopting the cloud copy would schedule
+  /* Replace local state with what we just agreed on, keeping the page
+     honest. persist() calls back into SYNC.changed(), so suppress that
+     for the duration — otherwise adopting the cloud copy would schedule
      a push of the thing we just pulled. */
-  function adopt(set, rev) {
+  function adopt(set, rev, maps) {
     owned = new Set(set);
-    state.base = [...owned].sort();
-    state.rev = rev || 0;
-    state.synced = true;
-    saveState();
-    cache = null;
     suppress = true;
+    if (maps) vals.set(maps);
+    rebase(owned, maps || vals.get(), rev);
+    cache = null;
     persist();
     suppress = false;
     render();
+  }
+
+  /* Agreed-on state, without touching the page: this is now the base
+     that future 3-way merges measure against. */
+  function rebase(set, maps, rev) {
+    state.base = [...set].sort();
+    state.baseRules = Object.assign({}, maps.rules);
+    state.baseValues = Object.assign({}, maps.values);
+    state.rev = rev || 0;
+    state.synced = true;
+    saveState();
   }
 
   function saveState() { writeLS(STATE_KEY, state); }
@@ -1324,14 +1812,21 @@ const SYNC = (function () {
 
     document.getElementById("btnTakeCloud").onclick = () => {
       bar.hidden = true; awaitingChoice = false;
-      adopt(new Set(remote.data.owned), remote.data.rev);
+      adopt(new Set(remote.data.owned), remote.data.rev,
+            { rules: remote.data.rules, values: remote.data.values });
       setStatus("ok", "Synced");
     };
     document.getElementById("btnMergeBoth").onclick = () => {
       bar.hidden = true; awaitingChoice = false;
       const both = new Set(remote.data.owned);
       for (const id of owned) both.add(id);
-      adopt(both, remote.data.rev);
+      // No shared history to measure against, so an empty base means
+      // "keep everything from either side"; the cloud wins any clash.
+      const mine = vals.get();
+      adopt(both, remote.data.rev, {
+        rules:  mergeMaps({}, mine.rules,  remote.data.rules),
+        values: mergeMaps({}, mine.values, remote.data.values)
+      });
       schedulePush();
     };
   }
@@ -1379,7 +1874,7 @@ const SYNC = (function () {
     cfg = null;
     dropLS(CFG_KEY);
     dropLS(STATE_KEY);
-    state = { base: [], rev: 0, synced: false };
+    state = { base: [], baseRules: {}, baseValues: {}, rev: 0, synced: false };
     stopPolling();
     closePanel();
     setStatus("off", "Sync off");
@@ -1425,7 +1920,9 @@ const SYNC = (function () {
   }
 
   async function init() {
-    state = readLS(STATE_KEY, { base: [], rev: 0, synced: false });
+    state = readLS(STATE_KEY, { base: [], baseRules: {}, baseValues: {}, rev: 0, synced: false });
+    if (!state.baseRules) state.baseRules = {};
+    if (!state.baseValues) state.baseValues = {};
     wire();
     if (!cfg) { setStatus("off", "Sync off — this browser only"); return; }
     startPolling();
@@ -1440,9 +1937,9 @@ const SYNC = (function () {
   };
 })();
 
-/* <<< binderz-sync js <<< */
+/* <<< binderz js <<< */
 
-loadOwned().then(() => { render(); SYNC.init(); });
+loadOwned().then(() => { VALUES.init(); render(); SYNC.init(); });
 </script>
 
 </html>
