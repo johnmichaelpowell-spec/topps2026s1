@@ -447,7 +447,7 @@
       </div>
     </div>
     <!-- <<< binderz-sync ui <<< -->
-      </aside>
+          </aside>
 
   <main class="stage">
     <div class="nav">
@@ -987,6 +987,7 @@ $("file").onchange = e => {
 
 S.leaf = startLeaf();
 
+
 /* >>> binderz-sync js >>> */
 /* ============================================================
    Binderz — cross-device sync via GitHub
@@ -1023,7 +1024,10 @@ const SYNC = (function () {
   const PUSH_DELAY = 2500;    // debounce after the last tap
   const POLL_MS    = 60000;   // re-check while the tab is visible
 
-  let cfg       = null;                      // {token, owner, repo, branch}
+  /* Read eagerly, at module-evaluation time. loadOwned() runs before
+     init() and asks isOn() whether to fall back to SEED, so waiting
+     until init() to load this would leave that gate always false. */
+  let cfg       = readLS(CFG_KEY, null);     // {token, owner, repo, branch}
   let state     = { base: [], rev: 0, synced: false };
   let pushTimer = null, pollTimer = null;
   let busy = false, pending = false;
@@ -1421,7 +1425,6 @@ const SYNC = (function () {
   }
 
   async function init() {
-    cfg   = readLS(CFG_KEY, null);
     state = readLS(STATE_KEY, { base: [], rev: 0, synced: false });
     wire();
     if (!cfg) { setStatus("off", "Sync off — this browser only"); return; }
